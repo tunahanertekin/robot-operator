@@ -110,29 +110,34 @@ ifndef ignore-not-found
   ignore-not-found = false
 endif
 
-.PHONY: install
-install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+# CRD installation/uninstallation
+.PHONY: install-crds
+install-crds: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
-.PHONY: uninstall
-uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+.PHONY: uninstall-crds
+uninstall-crds: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
+# controller deployment with kustomize
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
+# generate a single manifest for all of the resources
 .PHONY: extract
 extract: manifests kustomize ## Extract controller YAMLs, not deploy
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > $(LOCAL_MANIFEST_LOCATION)/robot_operator.yaml
 
+# set node selectors
 .PHONY: select-node
 select-node: 
 	yq -i e '(select(.kind == "Deployment") | .spec.template.spec.nodeSelector."${LABEL_KEY}") = "${LABEL_VAL}"' $(LOCAL_MANIFEST_LOCATION)/robot_operator.yaml
 	yq -i e '(select(.kind == "Deployment") | .spec.template.spec.nodeSelector."${LABEL_KEY}") = "${LABEL_VAL}"' $(LOCAL_MANIFEST_LOCATION)/cert_manager_1.8.0.yaml
 
+# install cert-manager
 .PHONY: get-cert-manager
 get-cert-manager: 
 	kubectl apply -f $(LOCAL_MANIFEST_LOCATION)/cert_manager_1.8.0.yaml
@@ -140,6 +145,10 @@ get-cert-manager:
 .PHONY: apply
 apply: 
 	kubectl apply -f $(LOCAL_MANIFEST_LOCATION)/robot_operator.yaml
+
+.PHONY: uninstall
+uninstall: 
+	kubectl delete -f $(LOCAL_MANIFEST_LOCATION)/robot_operator.yaml
 
 # Production
 
@@ -160,6 +169,10 @@ gh-get-cert-manager:
 .PHONY: gh-apply
 gh-apply: 
 	kubectl apply -f $(MANIFEST_LOCATION)/robot_operator.yaml
+
+.PHONY: gh-uninstall
+gh-uninstall: 
+	kubectl delete -f $(MANIFEST_LOCATION)/robot_operator.yaml
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
